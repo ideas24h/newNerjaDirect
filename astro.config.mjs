@@ -12,6 +12,26 @@ import fauxOembedTransformer from "@remark-embedder/transformer-oembed";
 const remarkEmbedder = fauxRemarkEmbedder.default;
 const oembedTransformer = fauxOembedTransformer.default;
 
+// Wrap the oembed transformer so that network errors (e.g. in CI/agents
+// environments where external fetches are blocked) do not abort the build.
+const safeOembedTransformer = {
+  name: oembedTransformer.name,
+  shouldTransform: async (url) => {
+    try {
+      return await oembedTransformer.shouldTransform(url);
+    } catch {
+      return false;
+    }
+  },
+  getHTML: async (url, config) => {
+    try {
+      return await oembedTransformer.getHTML(url, config);
+    } catch {
+      return null;
+    }
+  },
+};
+
 import vue from "@astrojs/vue";
 /** @type {import('astro-m2dx').Options} */
 
@@ -40,7 +60,10 @@ export default defineConfig({
       [
         remarkEmbedder,
         {
-          transformers: [oembedTransformer],
+          transformers: [safeOembedTransformer],
+          handleError: ({ error, url }) => {
+            console.warn(`[remark-embedder] Could not embed ${url}: ${error.message}`);
+          },
         },
       ],
       [m2dx, m2dxOptions],
